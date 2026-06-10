@@ -32,4 +32,7 @@ const PinMapping pins[] = {
     { MDR_PORTD, Number_Bit_In_Port_7 },  // A5
 		{ MDR_PORTF, Number_Bit_In_Port_2 },  // SS vibor podkluchonnogo ustroistva	XP2.1 20 libo 5
  		{ MDR_PORTF, Number_Bit_In_Port_0 },  // MOSI HL4  21 zamknut s PA2
+		{ MDR_PORTA, 0 },   // 22  PA0  / EXT_INT1
+		{ MDR_PORTB, 10 },  // 23  PB10 / EXT_INT2
+		{ MDR_PORTB, 9 },   // 24  PB9  / EXT_INT4	
 };
