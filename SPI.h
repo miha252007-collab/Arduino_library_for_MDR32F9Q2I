@@ -1,5 +1,5 @@
-#ifndef SPI1_H
-#define SPI1_H
+#ifndef SPI_H
+#define SPI_H
 #include <stdint.h>
 #include <stddef.h>
 #include "MDR32F9Q2I.h"
@@ -28,18 +28,14 @@ class SPISettings{
 	public:
 		//peredelat 
 		SPISettings(uint32_t clock, uint8_t bitOrder, uint8_t dataMode) {
-			uint32_t F_hclk = SystemCoreClock; 
-			uint32_t best_cpsr = 2, best_scr = 0, min_diff = 0xFFFFFFFF;
-
 			if (__builtin_constant_p(clock)) {
 				init_AlwaysInline(clock, bitOrder, dataMode);
 			} else {
 				init_MightInline(clock, bitOrder, dataMode);
 			}
     }
-		
 		SPISettings() {
-    init_AlwaysInline(4000000, MSBFIRST, SPI_MODE0);
+			init_AlwaysInline(4000000, MSBFIRST, SPI_MODE0);
 		}
 	
 private:
@@ -49,29 +45,9 @@ private:
 
   void init_AlwaysInline(uint32_t clock, uint8_t bitOrder, uint8_t dataMode)
     __attribute__((__always_inline__)) {
-    // Clock settings are defined as follows. Note that this shows SPI2X
-    // inverted, so the bits form increasing numbers. Also note that
-    // fosc/64 appears twice
-    // SPR1 SPR0 ~SPI2X Freq
-    //   0    0     0   fosc/2 // SPR1 SPR0 ~SPI2X biti otvechiychie za delenie
-    //   0    0     1   fosc/4
-    //   0    1     0   fosc/8
-    //   0    1     1   fosc/16
-    //   1    0     0   fosc/32
-    //   1    0     1   fosc/64
-    //   1    1     0   fosc/64
-    //   1    1     1   fosc/128
 
-    // We find the fastest clock that is less than or equal to the
-    // given clock rate. The clock divider that results in clock_setting
-    // is 2 ^^ (clock_div + 1). If nothing is slow enough, we'll use the
-    // slowest (128 == 2 ^^ 7, so clock_div = 6).
     uint8_t clockDiv;
 
-    // When the clock is known at compile time, use this if-then-else
-    // cascade, which the compiler knows how to completely optimize
-    // away. When clock is not known, use a loop instead, which generates
-    // shorter code.
     if (__builtin_constant_p(clock)) { // __builtin_constant_p - provarka na zadanost peremennoi
       if (clock >= SystemCoreClock / 2) {
         clockDiv = 2;
@@ -98,18 +74,23 @@ private:
     }
 
     // Pack into the SPISettings class
-    SPI_Clock_Diver_CPSDVR = clockDiv
+    SPI_Clock_Diver_CPSDVR = clockDiv;
+		cpol = (dataMode & 0x2) ? (1 << 6) : 0;
+		cpha = (dataMode & 0x1) ? (1 << 7) : 0;
+		MDR_SSP1_cr0 = (0 << 8) | cpha | cpol | (0x7 << 0);
+		currentBitOrder = bitOrder;
 		}
-  uint8_t SPI_Clock_Diver_CPSDVR;
+  
 	//dopisat ostalnie polia classa
-		
-  uint32_t cpol = (dataMode & 0x2) ? (1 << 6) : 0;
-  uint32_t cpha = (dataMode & 0x1) ? (1 << 7) : 0;
-  uint32_t MDR_SSP1_cr0 = (0 << 8) | cpha | cpol | (0x7 << 0);
-	uint8_t currentBitOrder = bitOrder
+	uint8_t SPI_Clock_Diver_CPSDVR;	
+  uint32_t cpol;
+  uint32_t cpha;
+  uint32_t MDR_SSP1_cr0;
+	uint8_t currentBitOrder;
+
 		
   friend class SPIClass;
-}
+};
 
 
 
@@ -141,8 +122,33 @@ class SPIClass{
   // and configure the correct settings.
 	
 	inline static void beginTransaction(SPISettings settings){
-		current_settings = settings;
+		if (interruptMode > 0) {
+			uint32_t Old_PRIMASK = __get_PRIMASK();
+			__disable_irq();
 
+      if (interruptMode == 1) {
+				
+				interruptSave_0 = NVIC -> ICER[0] & (1 << EXT_INT1_IRQn);//old status interrupt 
+				interruptSave_1 = NVIC -> ICER[0] & (1 << EXT_INT2_IRQn);
+				interruptSave_2 = NVIC -> ICER[0] & (1 << EXT_INT4_IRQn);
+				
+        if (interrupt_0_status){
+					NVIC_DisableIRQ(EXT_INT1_IRQn);
+					//NVIC_ClearPendingIRQ(EXT_INT1_IRQn); //dlia chego?
+				}
+				 if (interrupt_1_status){
+					NVIC_DisableIRQ(EXT_INT2_IRQn);
+				}
+				 if (interrupt_2_status){
+					NVIC_DisableIRQ(EXT_INT4_IRQn);
+				}
+        __set_PRIMASK(Old_PRIMASK);
+      }//ELSE
+    }
+		
+		
+		current_settings = settings;
+		
     #ifdef SPI_TRANSACTION_MISMATCH_LED
     if (inTransactionFlag) {
       pinMode(SPI_TRANSACTION_MISMATCH_LED, OUTPUT);
@@ -151,16 +157,17 @@ class SPIClass{
     inTransactionFlag = 1;
     #endif
 		
-    while (MDR_SSP1 -> SR & (1 << 4));
+    while (MDR_SSP1 -> SR & (1 << 4)) {
+		}
 
     MDR_SSP1 -> CR1 &= ~(1 << 1); // SSE = 0
 
     MDR_SSP1 -> CPSR = settings.SPI_Clock_Diver_CPSDVR; 
-    MDR_SSP1 -> CR0  = settings.MDR_SSP1_cr0 ;// nuzno dobavit ochisku
+    MDR_SSP1 -> CR0  = settings.MDR_SSP1_cr0 ;// nuzno dobavit ochistku
 
     MDR_SSP1 -> CR1 |= (1 << 1); // SSE = 1
 		
-		currentBitOrder = settings.bitOrder
+		currentBitOrder = settings.currentBitOrder;//pomeniat
 	}
 	
 	
@@ -192,7 +199,7 @@ class SPIClass{
 			*/
 	}
 	
-	inline static transfer16(uint16_t data){
+	inline static uint16_t transfer16(uint16_t data){
 		
 		if (currentBitOrder == LSBFIRST) {
 			data = reverse_bits16(data);
@@ -255,6 +262,23 @@ class SPIClass{
     #endif
 		
 		//prerivaniya
+		  if (interruptMode > 0) {
+					uint32_t Old_PRIMASK = __get_PRIMASK();
+					__disable_irq();
+
+				if (interruptMode == 1) {
+					if (interruptSave_0){
+						NVIC -> ICER[0] |= (interruptSave_0 << EXT_INT1_IRQn);
+					}
+					if (interruptSave_1){
+						NVIC -> ICER[0] |= (interruptSave_1 << EXT_INT2_IRQn);
+					}
+					if (interruptSave_2){
+						NVIC -> ICER[0] |= (interruptSave_2 << EXT_INT4_IRQn);
+					}
+				}
+				__set_PRIMASK(Old_PRIMASK);
+			}
 	}
 	
 	static void end();
@@ -277,7 +301,8 @@ class SPIClass{
   // beginTransaction() to configure SPI settings.
   inline static void setDataMode(uint8_t dataMode) {
 		
-		while (MDR_SSP1 -> SR & (1 << 4)); // wait BSY = 0
+    while (MDR_SSP1 -> SR & (1 << 4)) {
+		} // wait BSY = 0
 		
 		MDR_SSP1->CR1 &= ~(1 << 1); // SSE = 0
 		
@@ -292,9 +317,10 @@ class SPIClass{
   // This function is deprecated.  New applications should use
   // beginTransaction() to configure SPI settings.
   inline static void setClockDivider(uint8_t clockDiv) {
-		while (MDR_SSP1 -> SR & (1 << 4));
+    while (MDR_SSP1 -> SR & (1 << 4)) {
+		}
     MDR_SSP1 -> CR1 &= ~(1 << 1); // SSE = 0
-    MDR_SSP1 -> CPSR = clockDivider; 
+    MDR_SSP1 -> CPSR = clockDiv; 
     MDR_SSP1 -> CR1 |= (1 << 1); // SSE = 1
 		
   }
@@ -306,10 +332,18 @@ class SPIClass{
   inline static void detachInterrupt();
 	
 	private:
-		
-		void digitalPinFuncAlternative(uint8_t pin);
+		static SPISettings current_settings;
+		static void digitalPinFuncAlternative(uint8_t pin);
 		static uint8_t initialized;
 		static uint8_t currentBitOrder;
+	
+		static uint8_t interruptMode;
+		static uint32_t interruptSave_0;
+		static uint32_t interruptSave_1;
+		static uint32_t interruptSave_2;
+		static uint8_t interrupt_0_status;
+		static uint8_t interrupt_1_status;
+		static uint8_t interrupt_2_status;
 	
 		static uint8_t reverse_bits(uint8_t b) {
 			b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
