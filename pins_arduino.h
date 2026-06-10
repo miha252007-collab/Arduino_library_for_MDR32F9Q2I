@@ -12,10 +12,15 @@
 #define A4                                                 18
 #define A5                                                 19
 
-#define SS																								20//PF2 SS
-#define SCK  	                                           	13//PF1 SCK
-#define MOSI 	                                           	21//PF0 MOSI
-#define MISO																							12//PF3 MISO
+#define SS																								20//PF2 SS CH4
+#define SCK  	                                           	13//PF1 SCK CH1
+#define MOSI 	                                           	21//PF0 MOSI CH2
+#define MISO																							12//PF3 MISO CH3
+
+//#define SS_2																							0//PC0/PD3 SS
+//#define SCK_2 	                                         	0//PC1 SCK
+//#define MOSI_2 	                                         	0//PD6 MOSI
+//#define MISO_2																						0//PC2/PD2 MISO
 
 typedef struct{
     volatile MDR_PORT_TypeDef *port;
